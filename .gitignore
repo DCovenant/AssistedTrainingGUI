@@ -1,0 +1,9 @@
+*.db
+*png
+*pdf
+.venv*
+*Zone.Identifier
+*json
+*__pycache__*
+*model.pt
+*coco*
