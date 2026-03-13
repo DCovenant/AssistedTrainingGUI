@@ -1,7 +1,8 @@
 ml/data/data.db
-ml/data/raw_images/
-ml/data/raw_pdfs/
-ml/models/versions/
+ml/data/raw_images/*
+ml/data/raw_pdfs/*
+ml/models/versions/*
+ml/data/coco/*
 .venv/
 *Zone.Identifier
 *__pycache__*
