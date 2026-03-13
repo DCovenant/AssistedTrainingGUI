@@ -31,9 +31,15 @@ class TrainingWorker(QThread):
     def __init__(self):
         super().__init__()
         self.stop_requested = False
+        self.force_stop_requested = False
 
     def stop(self) -> None:
         """Signal the training to stop after current epoch."""
+        self.stop_requested = True
+
+    def force_stop(self) -> None:
+        """Signal the training to stop immediately."""
+        self.force_stop_requested = True
         self.stop_requested = True
 
     def run(self) -> None:
@@ -67,6 +73,7 @@ class TrainingProgressDialog(QDialog):
         self.worker: TrainingWorker | None = None
         self.start_time: float = 0.0
         self.epoch_times: list[float] = []
+        self.force_stopped: bool = False
 
         # Metric history for plotting
         self._epochs: list[int] = []
@@ -115,9 +122,14 @@ class TrainingProgressDialog(QDialog):
 
         button_layout = QHBoxLayout()
 
-        self.stop_button = QPushButton("Stop")
+        self.stop_button = QPushButton("Stop Gracefully")
         self.stop_button.clicked.connect(self._on_stop_clicked)
         button_layout.addWidget(self.stop_button)
+
+        self.force_stop_button = QPushButton("Force Stop")
+        self.force_stop_button.clicked.connect(self._on_force_stop_clicked)
+        self.force_stop_button.setStyleSheet("background-color: #ff6b6b;")
+        button_layout.addWidget(self.force_stop_button)
 
         button_layout.addStretch()
 
@@ -195,7 +207,7 @@ class TrainingProgressDialog(QDialog):
         self.worker.epoch_complete.connect(self._on_epoch_complete)
         self.worker.training_complete.connect(self._on_training_complete)
         self.worker.training_error.connect(self._on_training_error)
-        self.worker.finished.connect(self.worker.deleteLater)
+        # Don't auto-delete worker - we need it in closeEvent
         self.worker.start()
 
     def _on_batch_progress(self, current: int, total: int) -> None:
@@ -252,11 +264,20 @@ class TrainingProgressDialog(QDialog):
         self._update_graph()
 
     def _on_stop_clicked(self) -> None:
-        """Handle Stop button click."""
+        """Handle Stop button click (graceful stop)."""
         if self.worker:
-            self.log_text.append("\nStopping training...")
+            self.log_text.append("\nStopping in the next epoch...")
             self.worker.stop()
             self.stop_button.setEnabled(False)
+
+    def _on_force_stop_clicked(self) -> None:
+        """Handle Force Stop button click (stop immediately without waiting for epoch)."""
+        if self.worker and self.worker.isRunning():
+            self.force_stopped = True
+            self.log_text.append("\nForce stopping training (skipping current batch)...")
+            self.worker.force_stop()
+            self.stop_button.setEnabled(False)
+            self.force_stop_button.setEnabled(False)
 
     def _on_training_complete(self, best_acc: float) -> None:
         """Show completion message.
@@ -285,6 +306,14 @@ class TrainingProgressDialog(QDialog):
 
     def closeEvent(self, event) -> None:
         """Wait for worker thread before closing."""
-        if self.worker and self.worker.isRunning():
-            self.worker.wait(5000)
+        try:
+            if self.worker and hasattr(self.worker, 'isRunning'):
+                if self.worker.isRunning():
+                    if not self.force_stopped:
+                        # Graceful shutdown: signal to stop
+                        self.worker.stop()
+                    # Wait for thread to finish (don't force terminate - causes CUDA crashes)
+                    self.worker.wait(5000)
+        except (RuntimeError, AttributeError):
+            pass
         super().closeEvent(event)

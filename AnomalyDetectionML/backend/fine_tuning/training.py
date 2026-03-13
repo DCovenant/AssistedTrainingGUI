@@ -319,6 +319,11 @@ class TrainingLauncher:
             train_total = 0
 
             for batch_idx, (pixel_values, labels) in enumerate(train_loader):
+                # Check if training should stop
+                if should_stop and should_stop():
+                    print("Training stopped during training phase")
+                    break
+
                 pixel_values = pixel_values.to(device)
                 labels = labels.to(device)
 
@@ -340,8 +345,8 @@ class TrainingLauncher:
                 if on_batch:
                     on_batch(batch_idx + 1, total_batches)
 
-            train_acc = train_correct / train_total * 100
-            avg_train_loss = train_loss / len(train_loader)
+            train_acc = train_correct / train_total * 100 if train_total > 0 else 0.0
+            avg_train_loss = train_loss / len(train_loader) if len(train_loader) > 0 else 0.0
 
             # --- VALIDATE ---
             self.model.eval()
@@ -351,6 +356,11 @@ class TrainingLauncher:
 
             with torch.no_grad():
                 for batch_idx, (pixel_values, labels) in enumerate(dev_loader):
+                    # Check if training should stop
+                    if should_stop and should_stop():
+                        print("Training stopped during validation phase")
+                        break
+
                     pixel_values = pixel_values.to(device)
                     labels = labels.to(device)
 
@@ -365,8 +375,8 @@ class TrainingLauncher:
                     if on_batch:
                         on_batch(len(train_loader) + batch_idx + 1, total_batches)
 
-            dev_acc = dev_correct / dev_total * 100
-            avg_dev_loss = dev_loss / len(dev_loader)
+            dev_acc = dev_correct / dev_total * 100 if dev_total > 0 else 0.0
+            avg_dev_loss = dev_loss / len(dev_loader) if len(dev_loader) > 0 else 0.0
 
             metrics = {
                 'epoch': epoch + 1,

@@ -3,10 +3,11 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QListWidget, QLabel, QMessageBox, QProgressDialog, QPushButton, QDialog,
-    QScrollArea
+    QScrollArea, QFileDialog, QComboBox
 )
 from PyQt6.QtGui import QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QRect
+import shutil
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from backend.data.data_checker import check_data_availability
@@ -78,19 +79,18 @@ class TerminalDetectorApp(QMainWindow):
         self.setWindowTitle("BT-7274")
         self.setGeometry(100, 100, 1400, 850)
 
+        # Setup menu bar
+        self._setup_menu_bar()
+
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
         toolbar_layout = QHBoxLayout()
 
-        self.train_button = QPushButton("Train")
-        self.train_button.clicked.connect(self._on_train_clicked)
-        toolbar_layout.addWidget(self.train_button)
-
-        self.model_train_button = QPushButton("Train Model")
-        self.model_train_button.clicked.connect(self._on_model_train_clicked)
-        toolbar_layout.addWidget(self.model_train_button)
+        self.train_model_button = QPushButton("Train Model")
+        self.train_model_button.clicked.connect(self._on_train_model_clicked)
+        toolbar_layout.addWidget(self.train_model_button)
 
         self.test_button = QPushButton("Test")
         self.test_button.clicked.connect(self._on_test_clicked)
@@ -101,9 +101,12 @@ class TerminalDetectorApp(QMainWindow):
         self.burn_predictions_button.setEnabled(False)
         toolbar_layout.addWidget(self.burn_predictions_button)
 
-        self.rescan_button = QPushButton("Rescan PDFs")
-        self.rescan_button.clicked.connect(self._on_rescan_pdfs_clicked)
-        toolbar_layout.addWidget(self.rescan_button)
+        # Model selector
+        toolbar_layout.addWidget(QLabel("Model:"))
+        self.model_selector = QComboBox()
+        self.model_selector.setMinimumWidth(150)
+        toolbar_layout.addWidget(self.model_selector)
+        self._load_available_models()
 
         info_button = QPushButton("i")
         info_button.setFixedWidth(28)
@@ -157,6 +160,175 @@ class TerminalDetectorApp(QMainWindow):
         QShortcut(QKeySequence("X"), self).activated.connect(self._remove_current_image)
         QShortcut(QKeySequence("Z"), self).activated.connect(self._undo_remove_image)
         self._setup_class_shortcuts()
+
+    def _load_available_models(self) -> None:
+        """Load available model versions from ml/models/versions directory."""
+        models_path = self.PROJECT_ROOT / "ml" / "models" / "versions"
+
+        # Clear existing items
+        self.model_selector.clear()
+
+        if not models_path.exists():
+            self.model_selector.addItem("No models found")
+            self.model_selector.setEnabled(False)
+            return
+
+        # Get all subdirectories in versions folder
+        model_dirs = sorted([d.name for d in models_path.iterdir() if d.is_dir()])
+
+        if not model_dirs:
+            self.model_selector.addItem("No models found")
+            self.model_selector.setEnabled(False)
+            return
+
+        # Add model directories to combobox
+        for model_name in model_dirs:
+            self.model_selector.addItem(model_name)
+
+        # Set best_model as default if it exists
+        if "best_model" in model_dirs:
+            self.model_selector.setCurrentText("best_model")
+
+        self.model_selector.setEnabled(True)
+
+    def _get_selected_model_path(self) -> Path:
+        """Get the full path to the selected model."""
+        model_name = self.model_selector.currentText()
+        if model_name == "No models found":
+            return None
+        return self.PROJECT_ROOT / "ml" / "models" / "versions" / model_name / "model.pt"
+
+    def _setup_menu_bar(self) -> None:
+        """Create menu bar with File menu."""
+        menubar = self.menuBar()
+
+        # Files menu
+        files_menu = menubar.addMenu("Files")
+
+        # Add Files action
+        add_files_action = files_menu.addAction("Add Files")
+        add_files_action.triggered.connect(self._on_add_files_clicked)
+
+        # Rescan PDFs action
+        rescan_pdfs_action = files_menu.addAction("Rescan PDFs")
+        rescan_pdfs_action.triggered.connect(self._on_rescan_pdfs_menu_clicked)
+
+    def _on_add_files_clicked(self) -> None:
+        """Handle Add Files menu action - opens file dialog to select PDFs."""
+        file_dialog = QFileDialog()
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
+        file_dialog.setNameFilters(["PDF Files (*.pdf)", "All Files (*)"])
+        file_dialog.setDefaultSuffix("pdf")
+
+        if file_dialog.exec() == QDialog.DialogCode.Accepted:
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                self._copy_pdfs_to_raw_folder(selected_files)
+                self._rescan_and_convert_pdfs()
+
+    def _copy_pdfs_to_raw_folder(self, file_paths: list[str]) -> None:
+        """Copy selected PDF files to raw_pdfs folder."""
+        raw_pdfs_path = self.PROJECT_ROOT / "ml" / "data" / "raw_pdfs"
+        raw_pdfs_path.mkdir(parents=True, exist_ok=True)
+
+        # Show progress dialog
+        progress_dialog = QProgressDialog(
+            "Copying PDF files...", None, 0, len(file_paths), self
+        )
+        progress_dialog.setWindowTitle("Adding Files")
+        progress_dialog.setCancelButton(None)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+
+        copied_count = 0
+        for idx, file_path in enumerate(file_paths):
+            progress_dialog.setValue(idx + 1)
+            try:
+                file_name = Path(file_path).name
+                dest_path = raw_pdfs_path / file_name
+                shutil.copy2(file_path, dest_path)
+                copied_count += 1
+            except Exception as e:
+                QMessageBox.warning(
+                    self, "Copy Error",
+                    f"Failed to copy {Path(file_path).name}: {str(e)}"
+                )
+
+        progress_dialog.close()
+
+        if copied_count > 0:
+            QMessageBox.information(
+                self, "Files Copied",
+                f"Successfully copied {copied_count} PDF file(s) to raw_pdfs folder."
+            )
+
+    def _on_rescan_pdfs_menu_clicked(self) -> None:
+        """Handle Rescan PDFs menu action - reconvert all PDFs without duplicates."""
+        pdfs_path = self.PROJECT_ROOT / "ml" / "data" / "raw_pdfs"
+        if not pdfs_path.exists() or not list(pdfs_path.glob("*.pdf")):
+            QMessageBox.information(
+                self, "No PDFs",
+                "No PDF files found in ml/data/raw_pdfs"
+            )
+            return
+
+        # Ask for confirmation
+        reply = QMessageBox.question(
+            self,
+            "Rescan PDFs",
+            "This will delete all existing PNG images and reconvert all PDFs.\n"
+            "Do you want to continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self._clear_and_reconvert_all_pdfs()
+
+    def _clear_and_reconvert_all_pdfs(self) -> None:
+        """Delete all PNG images and reconvert all PDFs without duplicates."""
+        raw_images_path = self.PROJECT_ROOT / "ml" / "data" / "raw_images"
+
+        # Delete all existing PNG images
+        if raw_images_path.exists():
+            for png_file in raw_images_path.glob("*.png"):
+                try:
+                    png_file.unlink()
+                except Exception as e:
+                    print(f"Failed to delete {png_file.name}: {e}")
+
+        # Now convert all PDFs fresh
+        self.pdf_worker = PDFConversionWorker(
+            raw_pdfs_path=str(self.PROJECT_ROOT / "ml" / "data" / "raw_pdfs"),
+            raw_images_path=str(self.PROJECT_ROOT / "ml" / "data" / "raw_images"),
+            rescan=False  # Use full conversion, not just new PDFs
+        )
+
+        progress_dialog = QProgressDialog(
+            "Rescanning and converting all PDFs...", None, 0, 0, self
+        )
+        progress_dialog.setWindowTitle("Rescan PDFs")
+        progress_dialog.setCancelButton(None)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+
+        self.pdf_worker.progress.connect(
+            lambda c, t: progress_dialog.setMaximum(t) or progress_dialog.setValue(c)
+        )
+        self.pdf_worker.finished.connect(
+            lambda stats: self._on_reconvert_complete(progress_dialog, stats)
+        )
+        self.pdf_worker.finished.connect(self.pdf_worker.deleteLater)
+        self.pdf_worker.start()
+
+    def _on_reconvert_complete(self, progress_dialog: QProgressDialog, stats: dict) -> None:
+        """Handle full PDF reconversion completion."""
+        progress_dialog.close()
+
+        message = (
+            f"Rescan complete!\n"
+            f"Converted: {stats.get('total_pdfs', 0)} PDFs to {stats.get('total_pages', 0)} PNG images"
+        )
+        QMessageBox.information(self, "Rescan Complete", message)
+        self.statusBar().showMessage(message)
+        self._load_images()
 
     def _create_left_panel(self) -> QWidget:
         """Create left panel with image list and classes controls."""
@@ -584,11 +756,49 @@ class TerminalDetectorApp(QMainWindow):
         QMessageBox.information(self, "Conversion Complete", message)
         self._load_images()
 
-    def _on_model_train_clicked(self) -> None:
-        """Handle Train Model button — opens progress dialog and trains in background."""
-        dialog = TrainingProgressDialog(self)
-        dialog.start_training()
-        dialog.exec()
+    def _on_train_model_clicked(self) -> None:
+        """Handle Train Model button — shows dataset division dialog, then starts training."""
+        annotated_images = self.db.get_annotated_images()
+
+        if not annotated_images:
+            QMessageBox.warning(
+                self,
+                "No Annotations",
+                "No annotated images found. Please annotate images first."
+            )
+            return
+
+        # Show dataset division dialog
+        all_images = [item.text() for item in self._get_all_images()]
+        dialog = DatasetDivisionDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        percentages = dialog.get_percentages()
+        self._split_dataset(all_images, percentages)
+
+        # Check if COCO files exist, create them if missing
+        coco_dir = self.PROJECT_ROOT / "ml" / "data" / "coco"
+        train_json = coco_dir / "coco_train.json"
+        dev_json = coco_dir / "coco_dev.json"
+
+        if not train_json.exists() or not dev_json.exists():
+            reply = QMessageBox.question(
+                self,
+                "Create COCO Files?",
+                "COCO JSON files are required for training.\n\n"
+                "Create them now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._create_coco_json()
+            else:
+                return
+
+        # Start training
+        training_dialog = TrainingProgressDialog(self)
+        training_dialog.start_training()
+        training_dialog.exec()
 
     def _on_test_clicked(self) -> None:
         """Run model predictions on the currently selected image."""
@@ -596,11 +806,11 @@ class TerminalDetectorApp(QMainWindow):
             QMessageBox.warning(self, "No Image", "Please select an image first.")
             return
 
-        model_path = self.PROJECT_ROOT / "ml" / "models" / "versions" / "best_model" / "model.pt"
-        if not model_path.exists():
+        model_path = self._get_selected_model_path()
+        if not model_path or not model_path.exists():
             QMessageBox.warning(
                 self, "No Model",
-                "No trained model found. Train a model first."
+                "Selected model not found. Please select a valid model."
             )
             return
 
@@ -681,24 +891,6 @@ class TerminalDetectorApp(QMainWindow):
             QMessageBox.information(self, "Rescan Complete", message)
             self.statusBar().showMessage(message)
             self._load_images()
-
-    def _on_train_clicked(self) -> None:
-        """Handle Train button click to split annotated images."""
-        annotated_images = self.db.get_annotated_images()
-
-        if not annotated_images:
-            QMessageBox.warning(
-                self,
-                "No Annotations",
-                "No annotated images found. Please annotate images first."
-            )
-            return
-
-        all_images = [item.text() for item in self._get_all_images()]
-        dialog = DatasetDivisionDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            percentages = dialog.get_percentages()
-            self._split_dataset(all_images, percentages)
 
     def _get_all_images(self) -> list:
         """Get all image items from list widget."""
@@ -873,7 +1065,7 @@ class TerminalDetectorApp(QMainWindow):
         reply = QMessageBox.question(
             self,
             "Create COCO JSON?",
-            "Export dataset to COCO format for Florence-2 training?",
+            "Export dataset to COCO format?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
