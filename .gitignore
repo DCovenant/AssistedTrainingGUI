@@ -9,7 +9,7 @@ ml/models/versions/best_model/*
 !ml/models/versions/best_model/.gitkeep
 ml/models/versions/final_model/*
 !ml/models/versions/final_model/.gitkeep
-ml/data/coco/*
+ml/data/coco/coco_*
 !ml/data/coco/.gitkeep
 .venv/
 *Zone.Identifier
