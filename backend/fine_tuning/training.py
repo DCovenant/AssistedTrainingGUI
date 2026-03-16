@@ -182,10 +182,6 @@ class COCOCropDataset(Dataset):
 
             if rotation != 0:
                 crop = crop.rotate(rotation, expand=True)
-            if color_mode == 'gray':
-                crop = crop.convert('L').convert('RGB')
-            else:
-                crop = crop.convert('RGB')
 
             inputs = self.processor(images=crop, return_tensors="pt")
             pixel_values = inputs['pixel_values'].squeeze(0)
@@ -346,6 +342,7 @@ class TrainingLauncher:
         criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
         scaler = GradScaler(device.type)
 
+        dev_acc = 0.0
         best_dev_acc = 0.0
         epochs_without_improvement = 0
         patience = 3  # Stop if dev_acc doesn't improve for 3 epochs
@@ -372,7 +369,7 @@ class TrainingLauncher:
                 pixel_values = pixel_values.to(device)
                 labels = labels.to(device)
 
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
 
                 with autocast(device.type):
                     logits = self.model(pixel_values)
@@ -399,7 +396,7 @@ class TrainingLauncher:
             dev_correct = 0
             dev_total = 0
 
-            with torch.no_grad():
+            with torch.no_grad(), autocast(device.type):
                 for batch_idx, (pixel_values, labels) in enumerate(dev_loader):
                     # Check if training should stop
                     if should_stop and should_stop():

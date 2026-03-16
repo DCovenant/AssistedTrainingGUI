@@ -1,7 +1,5 @@
 """Generate background training crops from unselected image regions."""
 
-from typing import Iterable
-
 # Window sizes — larger sizes only to reduce false positives
 WINDOW_SIZES = [
     (190, 180),  # medium — ~P50
@@ -90,13 +88,11 @@ def generate_background_crops(image_width: int, image_height: int,
         while y + crop_h <= image_height and len(bg_crops) < max_bg_per_image:
             x = 0
             while x + crop_w <= image_width and len(bg_crops) < max_bg_per_image:
-                # Double-check crop is within bounds
-                if x >= 0 and y >= 0 and x + crop_w <= image_width and y + crop_h <= image_height:
-                    if is_background_crop(x, y, crop_w, crop_h, annotations):
-                        bg_crops.append({
-                            'bbox': [x, y, crop_w, crop_h],
-                            'label': 0
-                        })
+                if is_background_crop(x, y, crop_w, crop_h, annotations):
+                    bg_crops.append({
+                        'bbox': [x, y, crop_w, crop_h],
+                        'label': 0
+                    })
                 x += stride_x
             y += stride_y
 
