@@ -55,7 +55,7 @@ def is_background_crop(crop_x: int, crop_y: int, crop_w: int, crop_h: int,
 def generate_background_crops(image_width: int, image_height: int,
                               annotations: list[list[float]],
                               crop_sizes: list[tuple[int, int]] = None,
-                              stride_ratio: float = 0.5,
+                              stride_ratio: float = 0.7,
                               max_bg_per_image: int = 200) -> list[dict]:
     """Generate background crops by systematic grid covering entire image.
 

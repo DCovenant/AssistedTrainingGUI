@@ -163,8 +163,8 @@ def run_inference(image_path: str, model_path: str,
 
         with torch.no_grad():
             logits = model(pixel_values)
-            probs = torch.softmax(logits, dim=1)
-            confidences, class_indices = probs.max(dim=1)
+            class_indices = logits.argmax(dim=1)
+            confidences = torch.sigmoid(logits.max(dim=1).values)
 
         # Keep high-confidence predictions (skip background class 0)
         for j, (x, y, w, h) in enumerate(batch_windows):
@@ -184,7 +184,7 @@ def run_inference(image_path: str, model_path: str,
                 })
 
     # Remove overlapping boxes
-    predictions = nms(predictions, iou_threshold=0.3)
+    predictions = nms(predictions, iou_threshold=0.1)
 
     print(f"Found {len(predictions)} predictions")
     return predictions
