@@ -236,16 +236,16 @@ Image crop → CLIP ViT-B/32 encoder → 512-dim features → Classification hea
 | Annotations | 93 total (cat bounding boxes) |
 | Augmentation | 16× (3 rotations × 2 color modes) |
 | Batch size | 96 |
-| Time (20 epochs) | 3–6 hours on RTX 5070 |
-| Early stopping | ~8–12 epochs typical |
+| Time (20 epochs) | 20–30 seconds on RTX 5070 |
+| Training scale | Very fast on small datasets (~100 images) |
 
 ### Inference
 
 | Metric | Value |
 |--------|-------|
 | Per-image latency | 2–5 seconds (RTX 5070) |
-| Image size | Typical ~2000×1500px |
-| GPU memory | ~10GB |
+| Bottleneck | Sliding window inference, not training |
+| GPU memory | ~10GB peak |
 
 ---
 
@@ -268,14 +268,14 @@ train_loader = DataLoader(
 )
 ```
 
-### Slow Training on CPU
+### Training on CPU
 
-CLIP fine-tuning is GPU-intensive. CPU training is possible but **very slow** (10–20× slower).
+Training without a GPU is possible but significantly slower. On small datasets (~100 images), GPU training takes 20–30 seconds. CPU training would be substantially longer.
 
 If you must train on CPU:
-1. Use fewer epochs (5 instead of 20)
-2. Use smaller batch size (16 instead of 96)
-3. Reduce augmentation
+1. Reduce batch size (32 or 16)
+2. Reduce number of workers
+3. Be patient—it will take minutes to hours depending on dataset size
 
 ### No GPU Detected
 

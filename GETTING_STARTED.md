@@ -56,7 +56,7 @@ Once you have at least 30–50 annotations (more is better):
 2. App exports COCO JSONs automatically
 3. Click **Train Model**
 4. Watch the progress dialog
-5. Wait 3–6 hours (RTX 5070) or less with fewer epochs
+5. Training is very fast on small datasets (~20–30 seconds for ~100 images)
 
 ## 7. Predict
 

@@ -390,8 +390,7 @@ Returns zero tensor on error instead of crashing. This prevents a single corrupt
 - **Batch size**: 96 (tuned for RTX 5070's 12GB VRAM)
 - **Dataloader workers**: 4 (training) + 2 (validation), with `pin_memory=True` and `persistent_workers=True`
 - **FP16 mixed precision**: 2× speedup
-- **Typical throughput**: ~1000 samples/sec on RTX 5070
-- **Total time**: 20 epochs × ~2 hours = ~40 hours (wall time). With early stopping and FP16: typically 3–6 hours.
+- **Training time**: Scales with dataset size. On ~100 images: ~20–30 seconds. On larger datasets: hours to days.
 
 ### Inference Latency
 
@@ -498,5 +497,5 @@ This is what production ML looks like: thoughtful architecture, careful implemen
 - **Dependencies**: 7 major (PyQt6, torch, transformers, fitz, Pillow, matplotlib, torchvision)
 - **Python version**: 3.12+
 - **GPU memory**: 12GB (RTX 5070)
-- **Training time**: 3–6 hours (20 epochs with early stopping)
-- **Inference latency**: 2–5 seconds per image
+- **Training time**: 20–30 seconds on ~100 images; scales with dataset size
+- **Inference latency**: 2–5 seconds per image (sliding window bottleneck)
