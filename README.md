@@ -4,6 +4,9 @@ An interactive desktop app for annotating images and training a CLIP-based objec
 
 **Tested on:** 93 cat images from [Microsoft Cats vs Dogs dataset](https://www.microsoft.com/en-us/download/details.aspx?id=54765). Training took ~20–30 seconds on an RTX 5070.
 
+<!-- TODO: Screenshot of the full application window with an image loaded -->
+![App Overview](docs/images/app_overview.png)
+
 ---
 
 ## What This Does
@@ -77,12 +80,21 @@ If using PDFs:
 - App converts to PNG at 2x resolution automatically
 - Click **Rescan PDFs** to process new files
 
+<!-- TODO: Screenshot of the Rescan PDFs button in the toolbar -->
+![Rescan PDFs Button](docs/images/rescan_button.png)
+
 ### Step 2: Define Classes
 
 1. Click **Add** in the Classes panel
 2. Enter class name (e.g., "cat", "dog")
 3. Pick a color for visual distinction
 4. Repeat for each class
+
+<!-- TODO: Screenshot of the Add Class dialog (name field + color picker) -->
+![Add Class Dialog](docs/images/add_class_dialog.png)
+
+<!-- TODO: Screenshot of the Classes panel with a few classes listed (e.g., "cat" with its color) -->
+![Classes Panel](docs/images/classes_panel.png)
 
 ### Step 3: Annotate Images
 
@@ -93,12 +105,21 @@ If using PDFs:
 
 Annotations are saved to SQLite automatically.
 
+<!-- TODO: Screenshot of a cat image WITH a bounding box annotation drawn on it (colored rectangle around the cat) -->
+![Cat with Annotation](docs/images/cat_annotated.png)
+
+<!-- TODO: Screenshot of a cat image WITHOUT any annotation (raw, unlabeled) -->
+![Cat without Annotation](docs/images/cat_unlabeled.png)
+
 ### Step 4: Split & Export
 
 1. Click **Train** to open the split dialog
 2. Set train/dev/test percentages (default: 70/15/15)
 3. Confirm — only annotated images are divided; unlabeled images stay available
 4. App exports COCO JSON files automatically
+
+<!-- TODO: Screenshot of the Dataset Division dialog (train/dev/test percentage sliders) -->
+![Split Dialog](docs/images/split_dialog.png)
 
 ### Step 5: Train the Model
 
@@ -111,6 +132,9 @@ Training saves:
 - **best_model/** — Best checkpoint by validation accuracy
 - **final_model/** — Final epoch checkpoint
 
+<!-- TODO: Screenshot of the Training Progress dialog showing the loss/accuracy graphs mid-training or after completion -->
+![Training Progress](docs/images/training_progress.png)
+
 ### Step 6: Run Predictions
 
 1. Select an image
@@ -119,6 +143,12 @@ Training saves:
 4. Review predictions:
    - **Burn Predictions** — Accept them as annotations (adds to training set)
    - **Undo Predictions** — Clear them
+
+<!-- TODO: Screenshot of a cat image with RED prediction boxes overlaid (showing class name + confidence %, e.g., "cat 0.87") -->
+![Predictions on Image](docs/images/predictions.png)
+
+<!-- TODO: Screenshot showing the Test, Burn Predictions, and Undo Predictions buttons -->
+![Prediction Buttons](docs/images/prediction_buttons.png)
 
 ### Step 7: Retrain (Active Learning)
 
@@ -151,16 +181,22 @@ Repeat steps 4–6 to grow the training set with accepted predictions.
 - **Split:** 42 train / 19 dev / 32 test
 - **Training time:** ~20–30 seconds on RTX 5070
 
+<!-- TODO: Side-by-side comparison — left: unlabeled cat image, right: same cat with bounding box annotation -->
+![Before and After Annotation](docs/images/annotation_before_after.png)
+
+### Training Results
+
+<!-- TODO: Screenshot of the completed Training Progress dialog showing final loss/accuracy curves (the one you already have: "Captura de ecrã 2026-03-16 162524.png") -->
+![Training Loss and Accuracy](docs/images/training_results.png)
+
+This was a small-scale test. With only 42 training images, overfitting is expected (train accuracy reaches ~100% while dev accuracy lags behind). More annotations would improve generalization.
+
 ### To Reproduce
 
 1. Download cat images from the dataset
 2. Place in `ml/data/raw_images/`
 3. Create class "cat" and annotate images
 4. Train as described above
-
-### Notes
-
-This was a small-scale test. With only 42 training images, overfitting is expected (train accuracy reaches ~100% while dev accuracy lags behind). More annotations would improve generalization.
 
 ---
 
@@ -191,6 +227,9 @@ Image crop → CLIP ViT-B/32 encoder → 512-dim features → Classification hea
 - User reviews and accepts (burns) or rejects them
 - Accepted predictions become annotations in the database
 - Next training run includes burned predictions as ground truth
+
+<!-- TODO: Screenshot showing predictions burned into annotations (boxes changed from red prediction style to the class color) -->
+![Burned Predictions](docs/images/burned_predictions.png)
 
 ---
 
@@ -321,6 +360,9 @@ modelCreation/
 │   ├── models/                      # Checkpoints (auto-created)
 │   └── configs/
 │
+├── docs/
+│   └── images/                      # README screenshots (see below)
+│
 └── README.md
 ```
 
@@ -352,3 +394,39 @@ MIT License — free to use, modify, and distribute. See `LICENSE` file.
 ## Contributing
 
 Found a bug or have an idea? Open an issue or PR.
+
+---
+
+## Adding Screenshots to This README
+
+All image placeholders above reference `docs/images/`. To complete the README:
+
+1. Create the folder:
+   ```bash
+   mkdir -p docs/images
+   ```
+
+2. Take the following screenshots and save them:
+
+   | Filename | What to Capture |
+   |----------|-----------------|
+   | `app_overview.png` | Full application window with an image loaded and some annotations visible |
+   | `rescan_button.png` | Crop of the toolbar showing the Rescan PDFs button |
+   | `add_class_dialog.png` | The Add Class popup (name field + color picker) |
+   | `classes_panel.png` | The Classes panel with "cat" class listed |
+   | `cat_annotated.png` | A cat image with a bounding box drawn on it |
+   | `cat_unlabeled.png` | A cat image with no annotations |
+   | `split_dialog.png` | The Dataset Division dialog (train/dev/test percentages) |
+   | `training_progress.png` | The Training Progress dialog with loss/accuracy graphs (you already have this one) |
+   | `training_results.png` | Same as above, or the final completed state |
+   | `predictions.png` | A cat image with red prediction boxes (class name + confidence score visible) |
+   | `prediction_buttons.png` | Crop showing the Test, Burn Predictions, and Undo Predictions buttons |
+   | `burned_predictions.png` | After burning — predictions converted to class-colored annotation boxes |
+   | `annotation_before_after.png` | Side-by-side: unlabeled cat (left) vs annotated cat (right). Can be made in any image editor. |
+
+3. Remove the `<!-- TODO: ... -->` comments once each image is added.
+
+4. For the training results screenshot, you can copy your existing file:
+   ```bash
+   cp "Captura de ecrã 2026-03-16 162524.png" docs/images/training_results.png
+   ```
