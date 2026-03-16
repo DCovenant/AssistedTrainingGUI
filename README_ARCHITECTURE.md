@@ -64,7 +64,7 @@ This is a **classic active learning architecture**, but with careful engineering
 - **Simplicity**: Classification is easier to train and interpret than bbox regression. Reduces training complexity significantly.
 - **Transfer learning efficiency**: CLIP's vision encoder is pre-trained on 400M+ image-text pairs. Starting from a strong base means smaller training data requirements.
 - **Inference design**: Sliding-window + classification allows flexible detection at inference time without retraining for new classes.
-- **Less data**: Traditional detection models (YOLO, Faster R-CNN) need ~10k+ images with precise bbox annotations. This system achieves good results with ~500 annotated regions across fewer images.
+- **Less data**: Traditional detection models (YOLO, Faster R-CNN) need ~10k+ images with precise bbox annotations. This system can work with significantly smaller datasets by leveraging CLIP's pre-training.
 
 **Tradeoff**: Inference is slower than single-pass detectors (must classify many overlapping windows), but GPU-accelerated NMS mitigates this. For schematic PDFs (typically <50MB files), latency is acceptable.
 
@@ -88,7 +88,7 @@ for param in self.vision_model.encoder.layers[-4:].parameters():
 - **Empirically sound**: CLIP's early layers already capture universal features (edges, textures, shapes). Schematic components are composed of these primitives, so full fine-tuning is unnecessary.
 - **Domain transfer**: Electrical schematics differ from CLIP's training distribution, but edge/shape recognition still transfers well.
 
-**In practice**: This achieves **>85% accuracy** on schematic components with ~2-3 epochs of training, vs. weeks of training for fully fine-tuned models from scratch.
+**In practice**: This achieves good convergence with ~2-3 epochs of training on small datasets, vs. much longer training for fully fine-tuned models from scratch.
 
 ---
 
@@ -413,10 +413,10 @@ Returns zero tensor on error instead of crashing. This prevents a single corrupt
 
 ### 1. **CLIP vs. Scratch-Trained Models**
 
-We evaluated training a simple CNN from scratch. CLIP won because:
-- Converges faster (5–10 epochs vs. 50+)
-- Requires less annotated data (500 vs. 5000 samples)
-- Better generalization to out-of-distribution schematics
+CLIP-based fine-tuning works better than training from scratch because:
+- Faster convergence due to strong pre-training
+- Works with smaller annotated datasets
+- Better generalization across different image types
 
 Downside: Slower inference per-image (sliding window) vs. single-pass detectors.
 
@@ -436,15 +436,11 @@ We rejected simple downsampling (throw away background crops) because:
 - Harder to tune (what's the optimal ratio?)
 - Weighted loss is more principled
 
-Tested: downsampling 50:1 ratio vs. weighted loss. Weighted loss won by ~2% dev accuracy.
+Weighted loss handles class imbalance more principled than simple downsampling or upsampling.
 
 ### 4. **Frozen Backbone vs. Full Fine-tune**
 
-Frozen backbone (our choice) gave:
-- 85% accuracy with 2–3 epochs
-- Full fine-tune: 87% accuracy with 15+ epochs, higher overfitting risk
-
-Trade-off: ~2% accuracy for 5× faster training and simpler hyperparameter tuning. Worth it for active learning (many retrains).
+Frozen backbone (our choice) converges faster with less overfitting than full fine-tuning. Trade-off: slightly lower accuracy for significantly faster training and better generalization. Worth it for active learning (many retrains).
 
 ### 5. **SQLite vs. CSV / JSON Files**
 
@@ -485,8 +481,8 @@ BT-7274 demonstrates **disciplined engineering of a machine learning application
 - **GPU-accelerated NMS** over pure-Python algorithms
 
 Each decision involved trade-offs, but the overall system is:
-- **Fast to train** (3–6 hours, not days)
-- **Sample-efficient** (~500 annotations, not thousands)
+- **Fast to train** (hours, not days)
+- **Data-efficient** (works with small annotated datasets)
 - **Maintainable** (modular, typed, well-documented)
 - **Reproducible** (deterministic, version-controlled data)
 - **User-friendly** (interactive GUI with real-time feedback)

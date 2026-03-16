@@ -1,17 +1,59 @@
+# Data files (large, user-specific)
 ml/data/data.db
-ml/configs/
-!ml/configs/.gitkeep
 ml/data/raw_images/
 !ml/data/raw_images/.gitkeep
 ml/data/raw_pdfs/
 !ml/data/raw_pdfs/.gitkeep
+ml/data/coco/
+!ml/data/coco/.gitkeep
+
+# Trained models
 ml/models/versions/best_model/
 !ml/models/versions/best_model/.gitkeep
 ml/models/versions/final_model/
 !ml/models/versions/final_model/.gitkeep
-ml/data/coco/
-!ml/data/coco/.gitkeep
+
+# Config files
+ml/configs/
+!ml/configs/.gitkeep
+
+# Virtual environment
 .venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
 *Zone.Identifier
-*__pycache__*
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Archives
 archive/
+*.zip
+*.tar.gz
+
+# Temporary
+*.tmp
+*.log
