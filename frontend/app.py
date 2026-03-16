@@ -152,6 +152,9 @@ class TerminalDetectorApp(QMainWindow):
 
         self._load_images()
 
+        # Connect viewer signals
+        self.image_viewer.selection_clicked.connect(self._on_selection_clicked_for_delete)
+
         # Set up keyboard shortcuts
         QShortcut(QKeySequence("A"), self).activated.connect(self._navigate_prev_image)
         QShortcut(QKeySequence("D"), self).activated.connect(self._navigate_next_image)
@@ -214,17 +217,29 @@ class TerminalDetectorApp(QMainWindow):
         rescan_pdfs_action.triggered.connect(self._on_rescan_pdfs_menu_clicked)
 
     def _on_add_files_clicked(self) -> None:
-        """Handle Add Files menu action - opens file dialog to select PDFs."""
+        """Handle Add Files menu action - opens file dialog to select PDFs and images."""
         file_dialog = QFileDialog()
         file_dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
-        file_dialog.setNameFilters(["PDF Files (*.pdf)", "All Files (*)"])
-        file_dialog.setDefaultSuffix("pdf")
+        file_dialog.setNameFilters([
+            "PDF and Image Files (*.pdf *.jpg *.jpeg)",
+            "PDF Files (*.pdf)",
+            "Image Files (*.jpg *.jpeg)",
+            "All Files (*)"
+        ])
 
         if file_dialog.exec() == QDialog.DialogCode.Accepted:
             selected_files = file_dialog.selectedFiles()
             if selected_files:
-                self._copy_pdfs_to_raw_folder(selected_files)
-                self._rescan_and_convert_pdfs()
+                # Split files into PDFs and images
+                pdf_files = [f for f in selected_files if f.lower().endswith('.pdf')]
+                jpg_files = [f for f in selected_files if f.lower().endswith(('.jpg', '.jpeg'))]
+
+                if jpg_files:
+                    self._copy_images_to_raw_images(jpg_files)
+
+                if pdf_files:
+                    self._copy_pdfs_to_raw_folder(pdf_files)
+                    self._rescan_and_convert_pdfs()
 
     def _copy_pdfs_to_raw_folder(self, file_paths: list[str]) -> None:
         """Copy selected PDF files to raw_pdfs folder."""
@@ -261,6 +276,42 @@ class TerminalDetectorApp(QMainWindow):
                 f"Successfully copied {copied_count} PDF file(s) to raw_pdfs folder."
             )
 
+    def _copy_images_to_raw_images(self, file_paths: list[str]) -> None:
+        """Copy selected JPG/JPEG files directly to raw_images folder."""
+        raw_images_path = self.PROJECT_ROOT / "ml" / "data" / "raw_images"
+        raw_images_path.mkdir(parents=True, exist_ok=True)
+
+        # Show progress dialog
+        progress_dialog = QProgressDialog(
+            "Copying image files...", None, 0, len(file_paths), self
+        )
+        progress_dialog.setWindowTitle("Adding Files")
+        progress_dialog.setCancelButton(None)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+
+        copied_count = 0
+        for idx, file_path in enumerate(file_paths):
+            progress_dialog.setValue(idx + 1)
+            try:
+                file_name = Path(file_path).name
+                dest_path = raw_images_path / file_name
+                shutil.copy2(file_path, dest_path)
+                copied_count += 1
+            except Exception as e:
+                QMessageBox.warning(
+                    self, "Copy Error",
+                    f"Failed to copy {Path(file_path).name}: {str(e)}"
+                )
+
+        progress_dialog.close()
+
+        if copied_count > 0:
+            QMessageBox.information(
+                self, "Files Copied",
+                f"Successfully copied {copied_count} image file(s) to raw_images folder."
+            )
+            self._load_images()
+
     def _on_rescan_pdfs_menu_clicked(self) -> None:
         """Handle Rescan PDFs menu action - reconvert all PDFs without duplicates."""
         pdfs_path = self.PROJECT_ROOT / "ml" / "data" / "raw_pdfs"
@@ -287,13 +338,14 @@ class TerminalDetectorApp(QMainWindow):
         """Delete all PNG images and reconvert all PDFs without duplicates."""
         raw_images_path = self.PROJECT_ROOT / "ml" / "data" / "raw_images"
 
-        # Delete all existing PNG images
+        # Delete all existing images (PNG and JPG/JPEG from PDF conversions, keep native JPGs)
         if raw_images_path.exists():
-            for png_file in raw_images_path.glob("*.png"):
-                try:
-                    png_file.unlink()
-                except Exception as e:
-                    print(f"Failed to delete {png_file.name}: {e}")
+            for ext in ["*.png", "*.jpg", "*.jpeg"]:
+                for image_file in raw_images_path.glob(ext):
+                    try:
+                        image_file.unlink()
+                    except Exception as e:
+                        print(f"Failed to delete {image_file.name}: {e}")
 
         # Now convert all PDFs fresh
         self.pdf_worker = PDFConversionWorker(
@@ -482,14 +534,25 @@ class TerminalDetectorApp(QMainWindow):
     def _on_selection_made(self, class_name: str, class_color: str, rect: QRect) -> None:
         """Handle selection made on image."""
         if self.current_image_name and self.current_selection_class_id:
+            img_dims = self.image_viewer.get_image_dimensions()
+            if img_dims:
+                img_w, img_h = img_dims
+                rect = rect.normalized()
+                x = max(0, rect.x())
+                y = max(0, rect.y())
+                w = min(rect.width(), img_w - x)
+                h = min(rect.height(), img_h - y)
+            else:
+                x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
+
             annotation_id = self.db.add_annotation(
                 image_id=self.current_image_name,
                 class_id=self.current_selection_class_id,
                 dataset="default",
-                x=rect.x(),
-                y=rect.y(),
-                width=rect.width(),
-                height=rect.height(),
+                x=x,
+                y=y,
+                width=w,
+                height=h,
                 text=""
             )
             self.last_annotation_id = annotation_id
@@ -612,7 +675,11 @@ class TerminalDetectorApp(QMainWindow):
             return
 
         self.page_list.clear()
-        image_files = sorted(images_path.glob("*.png"))
+        # Collect all image files (PNG, JPG, JPEG)
+        image_files = sorted(
+            f for ext in ("*.png", "*.jpg", "*.jpeg")
+            for f in images_path.glob(ext)
+        )
         for image_file in image_files:
             self.page_list.addItem(image_file.name)
 
@@ -627,7 +694,6 @@ class TerminalDetectorApp(QMainWindow):
         image_path = self.PROJECT_ROOT / "ml" / "data" / "raw_images" / image_name
         self.image_viewer.load_image(str(image_path))
         self._load_annotations_for_image(image_name)
-        self.image_viewer.selection_clicked.connect(self._on_selection_clicked_for_delete)
 
     def _load_annotations_for_image(self, image_name: str) -> None:
         """Load and display annotations for image from database."""
@@ -684,8 +750,12 @@ class TerminalDetectorApp(QMainWindow):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
+        self.burn_predictions_button.setEnabled(False)
+        predictions_to_save = self.current_predictions[:]
+        self.current_predictions = []
+
         saved_count = 0
-        for pred in self.current_predictions:
+        for pred in predictions_to_save:
             class_data = self.db.get_class_by_name(pred['class_name'])
             if not class_data:
                 print(f"Warning: Class '{pred['class_name']}' not found in database")
@@ -723,6 +793,10 @@ class TerminalDetectorApp(QMainWindow):
 
     def _show_pdf_conversion_progress(self) -> None:
         """Show progress dialog and convert PDFs to PNG."""
+        if self.pdf_worker is not None and self.pdf_worker.isRunning():
+            QMessageBox.warning(self, "Busy", "PDF conversion already in progress.")
+            return
+
         self.pdf_worker = PDFConversionWorker(
             raw_pdfs_path=str(self.PROJECT_ROOT / "ml" / "data" / "raw_pdfs"),
             raw_images_path=str(self.PROJECT_ROOT / "ml" / "data" / "raw_images")
@@ -849,6 +923,10 @@ class TerminalDetectorApp(QMainWindow):
 
     def _rescan_and_convert_pdfs(self) -> None:
         """Scan for new PDFs and convert them."""
+        if self.pdf_worker is not None and self.pdf_worker.isRunning():
+            QMessageBox.warning(self, "Busy", "PDF conversion already in progress.")
+            return
+
         self.pdf_worker = PDFConversionWorker(
             raw_pdfs_path=str(self.PROJECT_ROOT / "ml" / "data" / "raw_pdfs"),
             raw_images_path=str(self.PROJECT_ROOT / "ml" / "data" / "raw_images"),

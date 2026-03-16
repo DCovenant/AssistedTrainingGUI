@@ -21,7 +21,11 @@ class ImageSelector(QMainWindow):
         self.setGeometry(100, 100, 1400, 800)
 
         self.images_folder = Path(images_folder)
-        self.image_files = sorted(self.images_folder.glob("*.png"))
+        # Collect all image files (PNG, JPG, JPEG)
+        self.image_files = sorted(
+            f for ext in ("*.png", "*.jpg", "*.jpeg")
+            for f in self.images_folder.glob(ext)
+        )
         self.current_index = 0
         self.selected_images: set[str] = set()
 
@@ -315,8 +319,9 @@ class ImageSelector(QMainWindow):
         """Remove existing files from split folders."""
         for folder in [train_path, dev_path, test_path]:
             if folder.exists():
-                for file in folder.glob("*.png"):
-                    file.unlink()
+                for ext in ("*.png", "*.jpg", "*.jpeg"):
+                    for file in folder.glob(ext):
+                        file.unlink()
 
     def keyPressEvent(self, event) -> None:
         """Handle keyboard shortcuts."""

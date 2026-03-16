@@ -79,6 +79,13 @@ class DatasetDivisionDialog(QDialog):
             )
             return
 
+        if any(v < 10 for v in [train, dev, test]):
+            QMessageBox.warning(
+                self, "Invalid Distribution",
+                "Each split (Train, Dev, Test) must be at least 10%."
+            )
+            return
+
         total = train + dev + test
 
         if total != 100:

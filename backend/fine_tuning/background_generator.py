@@ -2,6 +2,13 @@
 
 from typing import Iterable
 
+# Window sizes — larger sizes only to reduce false positives
+WINDOW_SIZES = [
+    (190, 180),  # medium — ~P50
+    (250, 230),  # large — ~P75
+    (320, 300),  # extra-large — ~P90
+]
+
 
 def calc_iou(crop_x: int, crop_y: int, crop_w: int, crop_h: int,
              ann_bbox: list[float]) -> float:
@@ -48,38 +55,41 @@ def is_background_crop(crop_x: int, crop_y: int, crop_w: int, crop_h: int,
 def generate_background_crops(image_width: int, image_height: int,
                               annotations: list[list[float]],
                               crop_sizes: list[tuple[int, int]] = None,
-                              stride_ratio: float = 0.5) -> list[dict]:
+                              stride_ratio: float = 0.5,
+                              max_bg_per_image: int = 200) -> list[dict]:
     """Generate background crops by systematic grid covering entire image.
 
     Covers all unselected regions by sliding a grid across the image,
     keeping only crops that don't significantly overlap annotations.
+    Capped at max_bg_per_image to prevent extreme class imbalance.
 
     Args:
         image_width, image_height: Image dimensions
         annotations: List of [x, y, width, height] annotated regions
         crop_sizes: Window sizes to generate, defaults to common sizes
         stride_ratio: Grid step size as fraction of window (0.3 = 30% of window)
+        max_bg_per_image: Maximum background crops per image (prevents data imbalance)
 
     Returns:
         List of background crop dicts with keys: bbox, label
     """
     if crop_sizes is None:
-        crop_sizes = [(100, 60), (120, 80), (90, 70)]  # Reduced from 5 to 3 sizes for speed
+        crop_sizes = WINDOW_SIZES
 
     bg_crops = []
 
     for crop_w, crop_h in crop_sizes:
-        # Skip if crop size is invalid
-        if crop_w <= 0 or crop_h <= 0:
+        # Skip if crop size is invalid or if already at max
+        if crop_w <= 0 or crop_h <= 0 or len(bg_crops) >= max_bg_per_image:
             continue
 
         stride_x = max(1, int(crop_w * stride_ratio))
         stride_y = max(1, int(crop_h * stride_ratio))
 
         y = 0
-        while y + crop_h <= image_height:
+        while y + crop_h <= image_height and len(bg_crops) < max_bg_per_image:
             x = 0
-            while x + crop_w <= image_width:
+            while x + crop_w <= image_width and len(bg_crops) < max_bg_per_image:
                 # Double-check crop is within bounds
                 if x >= 0 and y >= 0 and x + crop_w <= image_width and y + crop_h <= image_height:
                     if is_background_crop(x, y, crop_w, crop_h, annotations):

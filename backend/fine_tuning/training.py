@@ -45,7 +45,7 @@ class COCOCropDataset(Dataset):
     """
 
     def __init__(self, coco_json_path: str, processor: CLIPProcessor,
-                 images_directory: str | None = None):
+                 images_directory: str | None = None, augment: bool = False):
         if images_directory is None:
             project_root = Path(__file__).parent.parent.parent
             images_directory = str(project_root / "ml" / "data" / "raw_images")
@@ -55,7 +55,6 @@ class COCOCropDataset(Dataset):
 
         self.images_dir = Path(images_directory)
         self.processor = processor
-        self._image_cache: dict[str, Image.Image] = {}
 
         # Build image lookup: id -> metadata
         self.id_to_image = {img['id']: img for img in coco_data['images']}
@@ -81,8 +80,38 @@ class COCOCropDataset(Dataset):
         bg_samples = self._generate_all_background_crops(coco_data['images'], coco_data['annotations'])
         self.samples.extend(bg_samples)
 
+        # Filter out invalid bbox samples
+        invalid = [s for s in self.samples if not self._is_valid_bbox(s['bbox'])]
+        if invalid:
+            print(f"Warning: filtering {len(invalid)} invalid bbox samples")
+        self.samples = [s for s in self.samples if self._is_valid_bbox(s['bbox'])]
+
+        # Deterministic augmentation: 3 rotations × 2 color modes = 6× expansion
+        # Only realistic angles (not upside-down): 0°, ±45°
+        if augment:
+            augmented = []
+            rotations = [0, 45, -45]
+            color_modes = ['rgb', 'gray']
+            for sample in self.samples:
+                for angle in rotations:
+                    for color in color_modes:
+                        augmented.append({
+                            **sample,
+                            'rotation': angle,
+                            'color_mode': color,
+                        })
+            pre_aug = len(self.samples)
+            self.samples = augmented
+            print(f"Augmentation: {pre_aug} → {len(self.samples)} samples "
+                  f"(3 rotations × 2 color modes)")
+
         print(f"Dataset loaded: {num_positives} positives + {len(bg_samples)} background "
               f"from {len(self.id_to_image)} images, {self.num_classes} classes")
+
+    def _is_valid_bbox(self, bbox: list) -> bool:
+        """Check if a bounding box is valid."""
+        x, y, w, h = bbox
+        return w > 0 and h > 0 and x >= 0 and y >= 0
 
     def _generate_all_background_crops(
         self, images: list[dict], annotations: list[dict]
@@ -90,6 +119,7 @@ class COCOCropDataset(Dataset):
         """Generate background crops from all unselected regions in each image.
 
         Uses systematic grid covering to ensure all unselected space is represented.
+        Capped per-image to prevent extreme class imbalance.
 
         Args:
             images: List of image metadata dicts
@@ -111,7 +141,10 @@ class COCOCropDataset(Dataset):
             img_w, img_h = img_meta['width'], img_meta['height']
             anns = image_annotations.get(img_id, [])
 
-            bg_crops = generate_background_crops(img_w, img_h, anns)
+            # Cap background crops per image to reduce class imbalance
+            # 20 per image × ~84 images = ~1,680 BG; after 16× augmentation ≈ 18:1 ratio
+            max_bg_per_image = 20
+            bg_crops = generate_background_crops(img_w, img_h, anns, max_bg_per_image=max_bg_per_image)
             for crop in bg_crops:
                 bg_samples.append({
                     'file_name': img_meta['file_name'],
@@ -128,35 +161,31 @@ class COCOCropDataset(Dataset):
         sample = self.samples[idx]
         file_name = sample['file_name']
 
-        # Load image (cached)
-        if file_name not in self._image_cache:
-            image_path = self.images_dir / file_name
-            self._image_cache[file_name] = Image.open(image_path).convert('RGB')
-        image = self._image_cache[file_name]
+        # Load image as grayscale then convert to RGB for CLIP processor
+        image_path = self.images_dir / file_name
+        image = Image.open(image_path).convert('L').convert('RGB')
 
         # Crop and process
         x, y, w, h = sample['bbox']
         x, y, w, h = int(x), int(y), int(w), int(h)
 
-        # Validate crop bounds
-        if w <= 0 or h <= 0 or x < 0 or y < 0:
-            # Return background crop as fallback
-            return torch.zeros((3, 224, 224), dtype=torch.float32), torch.tensor(0, dtype=torch.long)
-
         x1, y1 = max(0, x), max(0, y)
         x2 = min(image.width, x + w)
         y2 = min(image.height, y + h)
 
-        # Skip if crop is outside image bounds
-        if x2 <= x1 or y2 <= y1:
-            return torch.zeros((3, 224, 224), dtype=torch.float32), torch.tensor(0, dtype=torch.long)
-
         try:
-            crop = image.crop((x1, y1, x2, y2)).convert('RGB')
+            crop = image.crop((x1, y1, x2, y2))
 
-            # Validate crop has content
-            if crop.size[0] <= 0 or crop.size[1] <= 0:
-                return torch.zeros((3, 224, 224), dtype=torch.float32), torch.tensor(0, dtype=torch.long)
+            # Apply augmentation transforms if present
+            rotation = sample.get('rotation', 0)
+            color_mode = sample.get('color_mode', 'gray')
+
+            if rotation != 0:
+                crop = crop.rotate(rotation, expand=True)
+            if color_mode == 'gray':
+                crop = crop.convert('L').convert('RGB')
+            else:
+                crop = crop.convert('RGB')
 
             inputs = self.processor(images=crop, return_tensors="pt")
             pixel_values = inputs['pixel_values'].squeeze(0)
@@ -196,10 +225,10 @@ class CLIPDetector(nn.Module):
             nn.Linear(256, num_classes)
         )
 
-        # Freeze most of vision encoder, only train last 2 layers
+        # Freeze most of vision encoder, only train last 4 layers
         for param in self.vision_model.parameters():
             param.requires_grad = False
-        for param in self.vision_model.encoder.layers[-2:].parameters():
+        for param in self.vision_model.encoder.layers[-4:].parameters():
             param.requires_grad = True
 
         # Classification head is always trainable
@@ -280,7 +309,7 @@ class TrainingLauncher:
         dev_json = str(project_root / "ml" / "data" / "coco" / "coco_dev.json")
         images_dir = str(project_root / "ml" / "data" / "raw_images")
 
-        train_dataset = COCOCropDataset(train_json, temp_processor, images_dir)
+        train_dataset = COCOCropDataset(train_json, temp_processor, images_dir, augment=True)
         dev_dataset = COCOCropDataset(dev_json, temp_processor, images_dir)
 
         train_loader = DataLoader(
@@ -300,10 +329,26 @@ class TrainingLauncher:
             lr=learning_rate
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-        criterion = nn.CrossEntropyLoss()
-        scaler = GradScaler('cuda')
+
+        # Calculate class weights to balance background/positive imbalance
+        class_counts = [0] * num_classes
+        for sample in train_dataset.samples:
+            class_counts[sample['label']] += 1
+
+        # Weight inversely by count: rare classes get higher weight
+        class_weights = [len(train_dataset.samples) / (num_classes * count)
+                        for count in class_counts]
+        class_weights_tensor = torch.tensor(class_weights, dtype=torch.float32).to(device)
+
+        print(f"Class distribution: {class_counts}")
+        print(f"Class weights (for loss): {[f'{w:.3f}' for w in class_weights]}")
+
+        criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
+        scaler = GradScaler(device.type)
 
         best_dev_acc = 0.0
+        epochs_without_improvement = 0
+        patience = 3  # Stop if dev_acc doesn't improve for 3 epochs
         total_batches = len(train_loader) + len(dev_loader)
 
         for epoch in range(epochs):
@@ -329,7 +374,7 @@ class TrainingLauncher:
 
                 optimizer.zero_grad()
 
-                with autocast('cuda'):
+                with autocast(device.type):
                     logits = self.model(pixel_values)
                     loss = criterion(logits, labels)
 
@@ -393,13 +438,19 @@ class TrainingLauncher:
             if on_epoch:
                 on_epoch(metrics)
 
-            # Save best model
+            # Save best model and track early stopping
             if dev_acc > best_dev_acc:
                 best_dev_acc = dev_acc
+                epochs_without_improvement = 0
                 self._save_checkpoint(
                     Path(save_dir) / "best_model", num_classes,
                     train_dataset.categories, dev_acc, epoch + 1
                 )
+            else:
+                epochs_without_improvement += 1
+                if epochs_without_improvement >= patience:
+                    print(f"Early stopping: dev_acc hasn't improved for {patience} epochs")
+                    break
 
         # Final save
         self._save_checkpoint(

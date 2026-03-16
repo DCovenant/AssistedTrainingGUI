@@ -36,7 +36,11 @@ def check_data_availability(base_path: str | None = None) -> DataStatus:
     raw_images_path = base / "raw_images"
     raw_pdfs_path = base / "raw_pdfs"
 
-    has_raw_images = _folder_has_files(raw_images_path, "*.png")
+    has_raw_images = (
+        _folder_has_files(raw_images_path, "*.png")
+        or _folder_has_files(raw_images_path, "*.jpg")
+        or _folder_has_files(raw_images_path, "*.jpeg")
+    )
     has_raw_pdfs = _folder_has_files(raw_pdfs_path, "*.pdf")
 
     return DataStatus(

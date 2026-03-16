@@ -14,6 +14,7 @@ from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 
 from backend.fine_tuning.training import CLIPDetector
+from backend.fine_tuning.background_generator import WINDOW_SIZES
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODEL_ID = "openai/clip-vit-base-patch32"
@@ -118,7 +119,7 @@ def _iou(a: dict, b: dict) -> float:
 
 
 def run_inference(image_path: str, model_path: str,
-                  confidence_threshold: float = 0.7,
+                  confidence_threshold: float = 0.6,
                   batch_size: int = 64) -> list[dict]:
     """
     Run object detection on a single image.
@@ -126,7 +127,8 @@ def run_inference(image_path: str, model_path: str,
     Args:
         image_path: Path to image file
         model_path: Path to trained model checkpoint
-        confidence_threshold: Minimum confidence to keep a prediction
+        confidence_threshold: Minimum confidence to keep a prediction (default 0.5).
+                             Lowered from 0.7 to account for class imbalance weighting
         batch_size: How many windows to classify at once
 
     Returns:
@@ -135,17 +137,12 @@ def run_inference(image_path: str, model_path: str,
     print(f"\nRunning inference on {Path(image_path).name}...")
 
     model, processor, categories = load_model(model_path)
-    image = Image.open(image_path).convert('RGB')
+    image = Image.open(image_path).convert('L').convert('RGB')
     img_w, img_h = image.size
 
-    # Define window sizes based on typical annotation sizes
-    # Small, medium, large windows to detect objects at different scales
-    window_sizes = [
-        (80, 50), (100, 60), (120, 80),
-        (150, 100), (100, 100), (80, 120),
-    ]
+    window_sizes = WINDOW_SIZES
 
-    windows = sliding_window(img_w, img_h, window_sizes, stride_ratio=0.5)
+    windows = sliding_window(img_w, img_h, window_sizes, stride_ratio=0.7)
     print(f"Scanning {len(windows)} windows...")
 
     # Classify windows in batches

@@ -25,7 +25,12 @@ def validate_images(images_dir: str | None = None) -> dict:
         "issues": []
     }
 
-    for image_file in sorted(images_path.glob("*.png")):
+    # Validate all image types (PNG, JPG, JPEG)
+    image_files = sorted(
+        f for ext in ("*.png", "*.jpg", "*.jpeg")
+        for f in images_path.glob(ext)
+    )
+    for image_file in image_files:
         results["total"] += 1
         try:
             img = Image.open(image_file)

@@ -1,4 +1,5 @@
 from backend.data.annotation_database import AnnotationDatabase
+import random
 
 
 def create_initial_split(
@@ -25,6 +26,8 @@ def create_initial_split(
     db = AnnotationDatabase()
 
     labeled_images = db.get_annotated_images()
+    random.seed(42)
+    random.shuffle(labeled_images)
     unlabeled_images = db.get_unannotated_images(all_image_ids)
 
     total_labeled = len(labeled_images)
