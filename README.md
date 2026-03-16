@@ -4,7 +4,9 @@ An interactive desktop app for annotating images and training a CLIP-based objec
 
 **Trained on:** 93 cat images from [Microsoft Cats vs Dogs dataset](https://www.microsoft.com/en-us/download/details.aspx?id=54765). Training took ~20–30 seconds on an RTX 5070.
 
-<!-- TODO: Screenshot of the full application window with an image loaded -->
+
+https://github.com/user-attachments/assets/81d39baf-bac6-4a88-b6cd-2a323568f2a3
+
 <img width="1918" height="1029" alt="Captura de ecrã 2026-03-16 164745" src="https://github.com/user-attachments/assets/7d62f4e5-99c9-47ca-ae35-16887040d938" />
 
 ---
