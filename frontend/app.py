@@ -158,9 +158,12 @@ class TerminalDetectorApp(QMainWindow):
         # Set up keyboard shortcuts
         QShortcut(QKeySequence("A"), self).activated.connect(self._navigate_prev_image)
         QShortcut(QKeySequence("D"), self).activated.connect(self._navigate_next_image)
+        QShortcut(QKeySequence("R"), self).activated.connect(self.undo_predictions_button.click)
         QShortcut(QKeySequence("S"), self).activated.connect(self._on_undo_clicked)
+        QShortcut(QKeySequence("T"), self).activated.connect(self.test_button.click)
         QShortcut(QKeySequence("W"), self).activated.connect(self._on_delete_mode_clicked)
         QShortcut(QKeySequence("X"), self).activated.connect(self._remove_current_image)
+        QShortcut(QKeySequence("Y"), self).activated.connect(self.burn_predictions_button.click)
         QShortcut(QKeySequence("Z"), self).activated.connect(self._undo_remove_image)
         self._setup_class_shortcuts()
 
@@ -1119,9 +1122,12 @@ class TerminalDetectorApp(QMainWindow):
         shortcuts_text = (
             "A — Previous image\n"
             "D — Next image\n"
+            "R — Undo predictions\n"
             "S — Undo last annotation\n"
+            "T — Test (run inference)\n"
             "W — Delete mode\n"
             "X — Remove image from dataset\n"
+            "Y — Burn predictions\n"
             "Z — Undo last removal\n"
             "\n"
             "1-9 — Select class (in order)"
